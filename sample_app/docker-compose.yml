@@ -1,0 +1,50 @@
+version: "3.9"
+
+services:
+  app-db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: app_db
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+    volumes:
+      - app_db_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
+  backend:
+    build: ../backend
+    working_dir: /app
+    environment:
+      DATABASE_URL: postgresql://admin:${POSTGRES_PASSWORD:-changeme}@app-db:5432/app_db
+      KEYCLOAK_URL: http://${KEYCLOAK_HOST:-localhost}:8888
+      KEYCLOAK_REALM: ${KEYCLOAK_REALM:-docuforms}
+      KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-docuforms-client}
+    ports:
+      - "8000:8000"
+    depends_on:
+      app-db:
+        condition: service_healthy
+    volumes:
+      - ../backend:/app
+    command: uvicorn app.api.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build: ../frontend
+    environment:
+      REACT_APP_API_URL: http://localhost:8000
+      REACT_APP_KEYCLOAK_URL: http://${KEYCLOAK_HOST:-localhost}:8888
+      REACT_APP_KEYCLOAK_REALM: ${KEYCLOAK_REALM:-docuforms}
+      REACT_APP_KEYCLOAK_CLIENT_ID: ${KEYCLOAK_CLIENT_ID:-docuforms-client}
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+
+volumes:
+  app_db_data:
